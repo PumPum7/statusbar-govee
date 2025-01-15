@@ -76,12 +76,13 @@
         <div class="power-row">
           <StatusIndicator 
             label="Power" 
-            value={status?.powerState ? 'On' : 'Off'}
+            value={""}
             icon={status?.powerState ? '⚡' : '💤'}
           />
           <button 
             class="power-button" 
             class:on={status?.powerState}
+            class:off={!status?.powerState}
             class:loading={isPowerLoading}
             disabled={isPowerLoading}
             on:click={handlePowerToggle}
@@ -95,33 +96,33 @@
         </div>
         {#if status?.brightness !== undefined && status?.powerState}
           <div class="status-indicator brightness-control">
-            <div class="label">
-              <span class="icon">✨</span>
+            <div class="brightness-row">
               <span>Brightness</span>
-            </div>
-            <div class="value">
               <span class="brightness-value">{status.brightness}%</span>
-              <input 
-                type="range"
-                min="0"
-                max="100"
-                value={status.brightness}
-                class="brightness-slider"
-                on:input={(e) => {
-                  const target = e.target as HTMLInputElement;
-                  clearTimeout(target.dataset.timeout as any);
-                  target.dataset.timeout = setTimeout(() => {
-                    onChangeCapabilityValue(
-                      device.device, 
-                      device.sku, 
-                      'devices.capabilities.brightness', 
-                      parseInt(target.value || '0'), 
-                      'brightness'
-                    );
-                  }, 300) as any;
-                }}
-              />
             </div>
+            <input 
+              type="range"
+              min="0"
+              max="100"
+              value={status.brightness}
+              class="brightness-slider"
+              style="--value: {status.brightness}%"
+              on:input={(e) => {
+                const target = e.target as HTMLInputElement;
+                target.style.setProperty('--value', `${target.value}%`);
+                
+                clearTimeout(target.dataset.timeout as any);
+                target.dataset.timeout = setTimeout(() => {
+                  onChangeCapabilityValue(
+                    device.device, 
+                    device.sku, 
+                    'devices.capabilities.brightness', 
+                    parseInt(target.value || '0'), 
+                    'brightness'
+                  );
+                }, 300) as any;
+              }}
+            />
           </div>
         {/if}
       {:else}
@@ -203,6 +204,10 @@
     color: #4ade80;
   }
 
+  .power-button.off {
+    color: #ff0000;
+  }
+
   .power-button.loading {
     animation: spin 1s linear infinite;
   }
@@ -233,47 +238,55 @@
   }
 
   .brightness-control {
-    padding: 0.5rem;
     background: rgba(255, 255, 255, 0.05);
+    padding: 12px;
     border-radius: 8px;
   }
 
-  .brightness-control .value {
+  .brightness-row {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 0.75rem;
-  }
-
-  .brightness-value {
-    min-width: 3rem;
-    text-align: right;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
   }
 
   .brightness-slider {
-    width: 100px;
+    width: 100%;
     height: 4px;
     -webkit-appearance: none;
     appearance: none;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.3);
     border-radius: 2px;
     outline: none;
   }
 
   .brightness-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 12px;
-    height: 12px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background: #ffffff;
+    background: #fff;
     cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    margin-top: -6px;
   }
 
   .brightness-slider::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
-    background: #ffffff;
+    background: #fff;
     cursor: pointer;
     border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    margin-top: -6px;
+  }
+
+  .brightness-slider::-webkit-slider-runnable-track {
+    background: linear-gradient(to right, #fff var(--value, 50%), rgba(255, 255, 255, 0.1) var(--value, 50%));
+    border-radius: 2px;
+    height: 4px;
   }
 </style>
