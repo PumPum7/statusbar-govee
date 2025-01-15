@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
-  
+
   import DeviceList from "../components/DeviceList.svelte";
   import type { Device, DeviceState } from "../types";
 
@@ -11,22 +11,45 @@
   let apiKey: string = $state("");
   let hasApiKey: boolean = $state(false);
 
-  onMount(async () => {
+  let refreshInterval: number;
+
+  onMount(() => {
     invoke("init");
-    let apiKey = await invoke("get_api_key");
-    hasApiKey = !!apiKey;
-    if (hasApiKey) {
-      handleRefresh();
-    }
+    invoke("get_api_key").then((apiKey) => {
+      hasApiKey = !!apiKey;
+      if (hasApiKey) {
+        handleRefresh();
+        // Auto refresh every 60 seconds
+        refreshInterval = setInterval(handleRefresh, 60_000);
+      }
+
+      return () => {
+        if (refreshInterval) {
+          clearInterval(refreshInterval);
+        }
+      };
+    });
   });
 
+  let isSubmitting = $state(false);
+
   async function handleSetApiKey() {
+    if (isSubmitting) return;
+    if (!apiKey.trim()) {
+      error = "Please enter an API key";
+      return;
+    }
+
     try {
+      isSubmitting = true;
+      error = null;
       await invoke("set_api_key", { apiKey });
       hasApiKey = true;
       handleRefresh();
     } catch (e) {
       error = e as string;
+    } finally {
+      isSubmitting = false;
     }
   }
 
@@ -51,7 +74,10 @@
 
   async function refreshDeviceStates() {
     for (const device of devices) {
-      deviceStates[device.device] = await getDeviceState(device.device, device.sku) as DeviceState;
+      deviceStates[device.device] = (await getDeviceState(
+        device.device,
+        device.sku
+      )) as DeviceState;
     }
   }
 
@@ -60,13 +86,35 @@
     await refreshDeviceStates();
   }
 
-  async function togglePower(device: string, sku: string, currentState: boolean) {
-    changeCapabilityValue(device, sku, 'devices.capabilities.on_off', !currentState ? 1 : 0, 'powerSwitch');
+  async function togglePower(
+    device: string,
+    sku: string,
+    currentState: boolean
+  ) {
+    changeCapabilityValue(
+      device,
+      sku,
+      "devices.capabilities.on_off",
+      !currentState ? 1 : 0,
+      "powerSwitch"
+    );
   }
 
-  async function changeCapabilityValue(device: string, sku: string, capabilityType: string, value: any, instance: string) {
+  async function changeCapabilityValue(
+    device: string,
+    sku: string,
+    capabilityType: string,
+    value: any,
+    instance: string
+  ) {
     try {
-      await invoke('change_capability_value', { device, sku, capabilityType, value, instance });
+      await invoke("change_capability_value", {
+        device,
+        sku,
+        capabilityType,
+        value,
+        instance,
+      });
       await refreshDeviceStates();
     } catch (e) {
       error = e as string;
@@ -87,14 +135,21 @@
         type="text"
         bind:value={apiKey}
         placeholder="Enter your Govee API key"
+        onkeydown={(e) => e.key === "Enter" && handleSetApiKey()}
       />
-      <button onclick={handleSetApiKey}>Set API Key</button>
+      <button
+        onclick={handleSetApiKey}
+        disabled={isSubmitting}
+        class:loading={isSubmitting}
+      >
+        {isSubmitting ? "Setting..." : "Set API Key"}
+      </button>
       <p class="help-text">
-        You can find your API key in the Govee Home app under Profile > Settings > About Us > Apply for API Key
+        You can find your API key in the Govee Home app under Profile > Settings
+        > About Us > Apply for API Key
       </p>
     </div>
   {:else}
-
     <DeviceList
       {devices}
       {deviceStates}
@@ -138,8 +193,17 @@
     width: 100%;
   }
 
-  .api-key-form button:hover {
+  .api-key-form button:hover:not(:disabled) {
     background: #5a5a5a;
+  }
+
+  .api-key-form button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .api-key-form button.loading {
+    background: #3a3a3a;
   }
 
   .help-text {
@@ -170,7 +234,13 @@
     margin: 0;
     padding: 0;
     background: transparent;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family:
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
   }
 
   :global(button) {

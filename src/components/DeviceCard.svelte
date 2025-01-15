@@ -1,11 +1,28 @@
 <script lang="ts">
-  import type { Device, DeviceState } from '../types';
+  import type { Device, DeviceCapabilityInstance, DeviceCapabilityValue, DeviceState } from '../types';
   import StatusIndicator from './StatusIndicator.svelte';
 
   export let device: Device;
   export let deviceState: DeviceState;
   export let onTogglePower: (device: string, sku: string, currentState: boolean) => Promise<void>;
   export let onChangeCapabilityValue: (device: string, sku: string, capabilityType: string, value: number, instance: string) => Promise<void>;
+
+  let isPowerLoading = false;
+  let error: string | null = null;
+
+  async function handlePowerToggle() {
+    if (isPowerLoading) return;
+    
+    try {
+      isPowerLoading = true;
+      error = null;
+      await onTogglePower(device.device, device.sku, status?.powerState || false);
+    } catch (e) {
+      error = e as string;
+    } finally {
+      isPowerLoading = false;
+    }
+  }
 
   function getDeviceIcon(device_type: string) {
     switch (device_type) {
@@ -18,12 +35,17 @@
   function getDeviceStatus(state: DeviceState) {
     if (!state) return null;
 
-    const powerState = state.capabilities.find(c => c.instance === 'powerSwitch')?.state.value;
-    const temperature = state.capabilities.find(c => c.instance === 'sensorTemperature')?.state.value;
-    const humidity = state.capabilities.find(c => c.instance === 'sensorHumidity')?.state.value?.currentHumidity;
-    const brightness = state.capabilities.find(c => c.instance === 'brightness')?.state.value;
+    const getCapabilityValue = <T extends DeviceCapabilityValue>(instance: DeviceCapabilityInstance): T | undefined => {
+      const capability = state.capabilities.find(c => c.instance === instance);
+      return capability?.state.value as T | undefined;
+    };
 
-    return { powerState, temperature, brightness, humidity };
+    return {
+      powerState: getCapabilityValue<boolean>('powerSwitch'),
+      temperature: getCapabilityValue<number>('sensorTemperature'),
+      humidity: getCapabilityValue<{ currentHumidity: number }>('sensorHumidity')?.currentHumidity,
+      brightness: getCapabilityValue<number>('brightness'),
+    };
   }
 
   $: status = getDeviceStatus(deviceState);
@@ -60,9 +82,15 @@
           <button 
             class="power-button" 
             class:on={status?.powerState}
-            on:click={() => onTogglePower(device.device, device.sku, status?.powerState || false)}
+            class:loading={isPowerLoading}
+            disabled={isPowerLoading}
+            on:click={handlePowerToggle}
           >
-            {status?.powerState ? '⏻' : '⭘'}
+            {#if isPowerLoading}
+              ⟳
+            {:else}
+              {status?.powerState ? '⏻' : '⭘'}
+            {/if}
           </button>
         </div>
         {#if status?.brightness !== undefined && status?.powerState}
@@ -79,7 +107,19 @@
                 max="100"
                 value={status.brightness}
                 class="brightness-slider"
-                on:change={(e) => onChangeCapabilityValue(device.device, device.sku, 'devices.capabilities.brightness', parseInt((e.target as HTMLInputElement).value || '0'), 'brightness')}
+                on:input={(e) => {
+                  const target = e.target as HTMLInputElement;
+                  clearTimeout(target.dataset.timeout as any);
+                  target.dataset.timeout = setTimeout(() => {
+                    onChangeCapabilityValue(
+                      device.device, 
+                      device.sku, 
+                      'devices.capabilities.brightness', 
+                      parseInt(target.value || '0'), 
+                      'brightness'
+                    );
+                  }, 300) as any;
+                }}
               />
             </div>
           </div>
@@ -163,6 +203,20 @@
     color: #4ade80;
   }
 
+  .power-button.loading {
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .power-button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
   .loading {
     color: #999;
     font-style: italic;
@@ -199,6 +253,7 @@
     width: 100px;
     height: 4px;
     -webkit-appearance: none;
+    appearance: none;
     background: rgba(255, 255, 255, 0.1);
     border-radius: 2px;
     outline: none;
