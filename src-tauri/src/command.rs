@@ -1,15 +1,15 @@
 use std::sync::Once;
 
-use dotenvy::dotenv;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use tauri_nspanel::ManagerExt;
+use tauri::State;
 
-use crate::fns::{
+use crate::{fns::{
     setup_menubar_panel_listeners, swizzle_to_menubar_panel, update_menubar_appearance,
-};
+}, AppState};
 
 static INIT: Once = Once::new();
 
@@ -125,13 +125,11 @@ pub fn show_menubar_panel(app_handle: tauri::AppHandle) {
 
     panel.show();
 }
-
 #[tauri::command]
-pub async fn get_devices() -> Result<Vec<GoveeDevice>, String> {
-    dotenv().map_err(|e| format!("Failed to load .env file: {}", e))?;
+pub async fn get_devices<'a>(app_state: State<'a, AppState>) -> Result<Vec<GoveeDevice>, String> {
+    let api_key = get_api_key_from_state(&app_state);
 
-    let api_key =
-        std::env::var("GOVEE_API_KEY").map_err(|_| "GOVEE_API_KEY environment variable not set")?;
+    let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
 
     let client = reqwest::Client::new();
     let mut headers = HeaderMap::new();
@@ -167,11 +165,14 @@ pub async fn get_devices() -> Result<Vec<GoveeDevice>, String> {
 }
 
 #[tauri::command]
-pub async fn get_device_state(device: String, sku: String) -> Result<DeviceState, String> {
-    dotenv().map_err(|e| format!("Failed to load .env file: {}", e))?;
+pub async fn get_device_state<'a>(
+    app_state: State<'a, AppState>,
+    device: String,
+    sku: String,
+) -> Result<DeviceState, String> {
+    let api_key = get_api_key_from_state(&app_state);
 
-    let api_key =
-        std::env::var("GOVEE_API_KEY").map_err(|_| "GOVEE_API_KEY environment variable not set")?;
+    let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
 
     let client = reqwest::Client::new();
     let mut headers = HeaderMap::new();
@@ -217,17 +218,17 @@ pub async fn get_device_state(device: String, sku: String) -> Result<DeviceState
 }
 
 #[tauri::command]
-pub async fn change_capability_value(
+pub async fn change_capability_value<'a>(
+    app_state: State<'a, AppState>,
     device: String,
     sku: String,
     capability_type: String,
     instance: String,
     value: serde_json::Value,
 ) -> Result<(), String> {
-    dotenv().map_err(|e| format!("Failed to load .env file: {}", e))?;
+    let api_key = get_api_key_from_state(&app_state);
 
-    let api_key =
-        std::env::var("GOVEE_API_KEY").map_err(|_| "GOVEE_API_KEY environment variable not set")?;
+    let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
 
     let client = reqwest::Client::new();
     let mut headers = HeaderMap::new();
@@ -267,4 +268,47 @@ pub async fn change_capability_value(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn get_api_key(app_state: State<AppState>) -> Option<String> {
+    get_api_key_from_state(&app_state)
+}
+
+fn get_api_key_from_state(state: &State<AppState>) -> Option<String> {
+    let key = state.api_key.lock().unwrap().clone();
+
+    if key.is_empty() {
+        return None;
+    }
+
+    Some(key)
+}
+#[tauri::command]
+pub async fn set_api_key<'a>(app_state: State<'a, AppState>, api_key: String) -> Result<(), String> {
+    // Test if the API key is valid
+    if api_key.is_empty() {
+        return Err("API key cannot be empty".to_string());
+    }
+
+    let client = reqwest::Client::new();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "Govee-API-Key",
+        HeaderValue::from_str(&api_key).map_err(|e| format!("Invalid API key format: {}", e))?,
+    );
+    let response = client
+        .get("https://openapi.api.govee.com/router/api/v1/user/devices")
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch devices: {}", e))?;
+
+    if response.status().is_success() {
+        let mut state = app_state.api_key.lock().unwrap();
+        *state = api_key;
+        Ok(())
+    } else {
+        Err("Invalid API key".to_string())
+    }
 }

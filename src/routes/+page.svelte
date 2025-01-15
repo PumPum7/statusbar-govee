@@ -1,17 +1,34 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  
   import DeviceList from "../components/DeviceList.svelte";
   import type { Device, DeviceState } from "../types";
 
   let devices: Device[] = $state([]);
   let error: string | null = $state(null);
   let deviceStates: Record<string, DeviceState> = $state({});
+  let apiKey: string = $state("");
+  let hasApiKey: boolean = $state(false);
 
-  onMount(() => {
+  onMount(async () => {
     invoke("init");
-    handleRefresh();
+    let apiKey = await invoke("get_api_key");
+    hasApiKey = !!apiKey;
+    if (hasApiKey) {
+      handleRefresh();
+    }
   });
+
+  async function handleSetApiKey() {
+    try {
+      await invoke("set_api_key", { apiKey });
+      hasApiKey = true;
+      handleRefresh();
+    } catch (e) {
+      error = e as string;
+    }
+  }
 
   async function getDevices() {
     try {
@@ -27,7 +44,7 @@
       const state = await invoke("get_device_state", { device, sku });
       return state;
     } catch (e) {
-      console.error("Failed to get device state:", e);
+      error = e as string;
       return null;
     }
   }
@@ -36,7 +53,6 @@
     for (const device of devices) {
       deviceStates[device.device] = await getDeviceState(device.device, device.sku) as DeviceState;
     }
-    console.log(deviceStates);
   }
 
   async function handleRefresh() {
@@ -52,7 +68,6 @@
     try {
       await invoke('change_capability_value', { device, sku, capabilityType, value, instance });
       await refreshDeviceStates();
-      console.log("test", deviceStates);
     } catch (e) {
       error = e as string;
     }
@@ -64,16 +79,75 @@
     <div class="error">{error}</div>
   {/if}
 
-  <DeviceList
-    {devices}
-    {deviceStates}
-    onRefresh={handleRefresh}
-    onTogglePower={togglePower}
-    onChangeCapabilityValue={changeCapabilityValue}
-  />
+  {#if !hasApiKey}
+    <div class="api-key-form">
+      <h2>Welcome to Govee Statusbar</h2>
+      <p>Please enter your Govee API key to get started:</p>
+      <input
+        type="text"
+        bind:value={apiKey}
+        placeholder="Enter your Govee API key"
+      />
+      <button onclick={handleSetApiKey}>Set API Key</button>
+      <p class="help-text">
+        You can find your API key in the Govee Home app under Profile > Settings > About Us > Apply for API Key
+      </p>
+    </div>
+  {:else}
+
+    <DeviceList
+      {devices}
+      {deviceStates}
+      onRefresh={handleRefresh}
+      onTogglePower={togglePower}
+      onChangeCapabilityValue={changeCapabilityValue}
+    />
+  {/if}
 </main>
 
 <style>
+  .api-key-form {
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .api-key-form h2 {
+    margin: 0 0 1rem 0;
+    font-size: 1.5rem;
+  }
+
+  .api-key-form input {
+    width: 100%;
+    padding: 0.5rem;
+    margin: 1rem 0;
+    border: 1px solid #333;
+    border-radius: 6px;
+    background: #2a2a2a;
+    color: white;
+  }
+
+  .api-key-form button {
+    background: #4a4a4a;
+    border: none;
+    color: #ffffff;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+    width: 100%;
+  }
+
+  .api-key-form button:hover {
+    background: #5a5a5a;
+  }
+
+  .help-text {
+    font-size: 0.8rem;
+    color: #999;
+    margin-top: 1rem;
+  }
+
   .menubar-container {
     background-color: #1a1a1a;
     color: #ffffff;
