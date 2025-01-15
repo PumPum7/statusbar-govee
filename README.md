@@ -62,6 +62,10 @@ The built application will be in `src-tauri/target/release/bundle`.
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
 ## Acknowledgments
 
 - Built with [Tauri](https://v2.tauri.app/)
