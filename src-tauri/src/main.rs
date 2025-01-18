@@ -5,16 +5,9 @@ mod command;
 mod fns;
 mod tray;
 
-use std::sync::Mutex;
-
 use tauri::{Builder, Manager};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_autostart::ManagerExt;
-
-#[derive(Default)]
-struct AppState {
-  api_key: Mutex<String>,
-}
 
 fn main() {
     Builder::default()
@@ -23,6 +16,7 @@ fn main() {
             MacosLauncher::LaunchAgent,
             Some(vec![]),
         ))
+        .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             command::init,
             command::show_menubar_panel,
@@ -32,9 +26,6 @@ fn main() {
             command::get_api_key,
             command::set_api_key,
         ])
-        .manage(AppState {
-            api_key: Mutex::new(String::new()),
-        })
         .setup(|app| {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
