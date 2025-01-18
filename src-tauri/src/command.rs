@@ -105,6 +105,50 @@ struct CapabilityControl {
     value: serde_json::Value,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct DynamicSceneRequest {
+    #[serde(rename = "requestId")]
+    request_id: String,
+    payload: DeviceStatePayload,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct DynamicSceneResponse {
+    #[serde(rename = "requestId")]
+    request_id: String,
+    code: i32,
+    msg: String,
+    payload: DynamicScenePayload,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct DynamicScenePayload {
+    sku: String,
+    device: String,
+    capabilities: Vec<DynamicSceneCapability>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct DynamicSceneCapability {
+    #[serde(rename = "type")]
+    capability_type: String,
+    instance: String,
+    parameters: DynamicSceneParameters,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct DynamicSceneParameters {
+    #[serde(rename = "dataType")]
+    data_type: String,
+    options: Vec<SceneOption>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SceneOption {
+    name: String,
+    value: serde_json::Value, // Can be integer or object with paramId and id
+}
+
 fn generate_request_id() -> String {
     Uuid::new_v4().to_string()
 }
@@ -319,4 +363,108 @@ pub async fn set_api_key(app: tauri::AppHandle, api_key: String) -> Result<(), S
     } else {
         Err("Invalid API key".to_string())
     }
+}
+
+#[tauri::command]
+pub async fn get_light_scenes(
+    app: tauri::AppHandle,
+    device: String,
+    sku: String,
+) -> Result<Vec<SceneOption>, String> {
+    let store = app.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
+    let api_key: Option<String> = store
+        .get("api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+    let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
+
+    let client = reqwest::Client::new();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "Govee-API-Key",
+        HeaderValue::from_str(&api_key).map_err(|e| format!("Invalid API key format: {}", e))?,
+    );
+
+    let request_body = DynamicSceneRequest {
+        request_id: generate_request_id(),
+        payload: DeviceStatePayload { device, sku },
+    };
+
+    let response = client
+        .post("https://openapi.api.govee.com/router/api/v1/device/scenes")
+        .headers(headers)
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch light scenes: {}", e))?;
+
+    let scene_response: DynamicSceneResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    if scene_response.code != 200 {
+        return Err(format!("API error: {}", scene_response.msg));
+    }
+
+    // Find the lightScene capability and return its options
+    let light_scenes = scene_response
+        .payload
+        .capabilities
+        .iter()
+        .find(|cap| cap.instance == "lightScene")
+        .ok_or("No light scenes found")?;
+
+    Ok(light_scenes.parameters.options.clone())
+}
+
+#[tauri::command]
+pub async fn get_diy_scenes(
+    app: tauri::AppHandle,
+    device: String,
+    sku: String,
+) -> Result<Vec<SceneOption>, String> {
+    let store = app.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
+    let api_key: Option<String> = store
+        .get("api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+    let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
+
+    let client = reqwest::Client::new();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        "Govee-API-Key",
+        HeaderValue::from_str(&api_key).map_err(|e| format!("Invalid API key format: {}", e))?,
+    );
+
+    let request_body = DynamicSceneRequest {
+        request_id: generate_request_id(),
+        payload: DeviceStatePayload { device, sku },
+    };
+
+    let response = client
+        .post("https://openapi.api.govee.com/router/api/v1/device/diy-scenes")
+        .headers(headers)
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch DIY scenes: {}", e))?;
+
+    let scene_response: DynamicSceneResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    if scene_response.code != 200 {
+        return Err(format!("API error: {}", scene_response.msg));
+    }
+
+    // Find the diyScene capability and return its options
+    let diy_scenes = scene_response
+        .payload
+        .capabilities
+        .iter()
+        .find(|cap| cap.instance == "diyScene")
+        .ok_or("No DIY scenes found")?;
+
+    Ok(diy_scenes.parameters.options.clone())
 }
