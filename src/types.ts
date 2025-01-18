@@ -11,7 +11,9 @@ export type DeviceCapabilityType =
   | "devices.capabilities.color_setting"
   | "devices.capabilities.online"
   | "devices.capabilities.sensorTemperature"
-  | "devices.capabilities.sensorHumidity";
+  | "devices.capabilities.sensorHumidity"
+  | "devices.capabilities.diy_color_setting"
+  | "devices.capabilities.dynamic_scene";
 
 export type DeviceCapabilityInstance =
   | "powerSwitch"
@@ -20,8 +22,10 @@ export type DeviceCapabilityInstance =
   | "online"
   | "sensorTemperature"
   | "sensorHumidity"
-  | "colorRgb";
-
+  | "colorRgb"
+  | "diyScene"
+  | "lightScene";
+  
 export type RGBColor = {
   r: number;
   g: number;
