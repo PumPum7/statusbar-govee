@@ -12,13 +12,7 @@ use crate::fns::{
 };
 
 static INIT: Once = Once::new();
-const SETTINGS_PATH: &str = ".settings.dat";
 const SETTINGS_FILE: &str = "settings.json";
-
-#[derive(Default)]
-struct AppSettings {
-    api_key: String,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GoveeResponse {
