@@ -5,13 +5,20 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use tauri_nspanel::ManagerExt;
-use tauri::State;
+use tauri_plugin_store::StoreExt;
 
-use crate::{fns::{
+use crate::fns::{
     setup_menubar_panel_listeners, swizzle_to_menubar_panel, update_menubar_appearance,
-}, AppState};
+};
 
 static INIT: Once = Once::new();
+const SETTINGS_PATH: &str = ".settings.dat";
+const SETTINGS_FILE: &str = "settings.json";
+
+#[derive(Default)]
+struct AppSettings {
+    api_key: String,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GoveeResponse {
@@ -125,9 +132,13 @@ pub fn show_menubar_panel(app_handle: tauri::AppHandle) {
 
     panel.show();
 }
+
 #[tauri::command]
-pub async fn get_devices<'a>(app_state: State<'a, AppState>) -> Result<Vec<GoveeDevice>, String> {
-    let api_key = get_api_key_from_state(&app_state);
+pub async fn get_devices(app: tauri::AppHandle) -> Result<Vec<GoveeDevice>, String> {
+    let store = app.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
+    let api_key: Option<String> = store
+        .get("api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
 
     let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
 
@@ -165,12 +176,15 @@ pub async fn get_devices<'a>(app_state: State<'a, AppState>) -> Result<Vec<Govee
 }
 
 #[tauri::command]
-pub async fn get_device_state<'a>(
-    app_state: State<'a, AppState>,
+pub async fn get_device_state(
+    app: tauri::AppHandle,
     device: String,
     sku: String,
 ) -> Result<DeviceState, String> {
-    let api_key = get_api_key_from_state(&app_state);
+    let store = app.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
+    let api_key: Option<String> = store
+        .get("api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
 
     let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
 
@@ -218,15 +232,18 @@ pub async fn get_device_state<'a>(
 }
 
 #[tauri::command]
-pub async fn change_capability_value<'a>(
-    app_state: State<'a, AppState>,
+pub async fn change_capability_value(
+    app: tauri::AppHandle,
     device: String,
     sku: String,
     capability_type: String,
     instance: String,
     value: serde_json::Value,
 ) -> Result<(), String> {
-    let api_key = get_api_key_from_state(&app_state);
+    let store = app.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
+    let api_key: Option<String> = store
+        .get("api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
 
     let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
 
@@ -271,21 +288,15 @@ pub async fn change_capability_value<'a>(
 }
 
 #[tauri::command]
-pub fn get_api_key(app_state: State<AppState>) -> Option<String> {
-    get_api_key_from_state(&app_state)
+pub fn get_api_key(app: tauri::AppHandle) -> Option<String> {
+    let store = app.store(SETTINGS_FILE).ok()?;
+    store
+        .get("api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
 }
 
-fn get_api_key_from_state(state: &State<AppState>) -> Option<String> {
-    let key = state.api_key.lock().unwrap().clone();
-
-    if key.is_empty() {
-        return None;
-    }
-
-    Some(key)
-}
 #[tauri::command]
-pub async fn set_api_key<'a>(app_state: State<'a, AppState>, api_key: String) -> Result<(), String> {
+pub async fn set_api_key(app: tauri::AppHandle, api_key: String) -> Result<(), String> {
     // Test if the API key is valid
     if api_key.is_empty() {
         return Err("API key cannot be empty".to_string());
@@ -305,8 +316,11 @@ pub async fn set_api_key<'a>(app_state: State<'a, AppState>, api_key: String) ->
         .map_err(|e| format!("Failed to fetch devices: {}", e))?;
 
     if response.status().is_success() {
-        let mut state = app_state.api_key.lock().unwrap();
-        *state = api_key;
+        let store = app.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
+        store.set("api_key", serde_json::Value::String(api_key));
+        store
+            .save()
+            .map_err(|_| "Failed to save settings".to_string())?;
         Ok(())
     } else {
         Err("Invalid API key".to_string())
