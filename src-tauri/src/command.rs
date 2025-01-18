@@ -17,7 +17,7 @@ const SETTINGS_FILE: &str = "settings.json";
 
 #[derive(Default)]
 struct AppSettings {
-  api_key: String,
+    api_key: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -136,7 +136,9 @@ pub fn show_menubar_panel(app_handle: tauri::AppHandle) {
 #[tauri::command]
 pub async fn get_devices(app: tauri::AppHandle) -> Result<Vec<GoveeDevice>, String> {
     let store = app.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
-    let api_key: Option<String> = store.get("api_key").and_then(|v| v.as_str().map(|s| s.to_string()));
+    let api_key: Option<String> = store
+        .get("api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
 
     let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
 
@@ -180,7 +182,9 @@ pub async fn get_device_state(
     sku: String,
 ) -> Result<DeviceState, String> {
     let store = app.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
-    let api_key: Option<String> = store.get("api_key").and_then(|v| v.as_str().map(|s| s.to_string()));
+    let api_key: Option<String> = store
+        .get("api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
 
     let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
 
@@ -237,7 +241,9 @@ pub async fn change_capability_value(
     value: serde_json::Value,
 ) -> Result<(), String> {
     let store = app.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
-    let api_key: Option<String> = store.get("api_key").and_then(|v| v.as_str().map(|s| s.to_string()));
+    let api_key: Option<String> = store
+        .get("api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
 
     let api_key = api_key.ok_or("API key not set. Please set your Govee API key first.")?;
 
@@ -284,7 +290,9 @@ pub async fn change_capability_value(
 #[tauri::command]
 pub fn get_api_key(app: tauri::AppHandle) -> Option<String> {
     let store = app.store(SETTINGS_FILE).ok()?;
-    store.get("api_key").and_then(|v| v.as_str().map(|s| s.to_string()))
+    store
+        .get("api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
 }
 
 #[tauri::command]
@@ -310,7 +318,9 @@ pub async fn set_api_key(app: tauri::AppHandle, api_key: String) -> Result<(), S
     if response.status().is_success() {
         let store = app.store(SETTINGS_FILE).map_err(|e| e.to_string())?;
         store.set("api_key", serde_json::Value::String(api_key));
-        store.save().map_err(|_| "Failed to save settings".to_string())?;
+        store
+            .save()
+            .map_err(|_| "Failed to save settings".to_string())?;
         Ok(())
     } else {
         Err("Invalid API key".to_string())
