@@ -46,7 +46,7 @@
       temperature: getCapabilityValue<number>('sensorTemperature'),
       humidity: getCapabilityValue<{ currentHumidity: number }>('sensorHumidity')?.currentHumidity,
       brightness: getCapabilityValue<number>('brightness'),
-      color: getCapabilityValue<number>('color'),
+      color: getCapabilityValue<number>('colorRgb'),
     };
   }
 
