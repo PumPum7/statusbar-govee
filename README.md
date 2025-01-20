@@ -8,7 +8,7 @@ A macOS menubar application to control your Govee smart devices. Built with Taur
 
 - 🔌 Control Govee devices directly from your menubar
 - 💡 Toggle lights on/off
-- ✨ Adjust brightness
+- ✨ Adjust brightness and color
 - 🌡️ Monitor temperature and humidity sensors
 - 🔄 Auto-refresh device states
 - 🚀 Fast and lightweight app
