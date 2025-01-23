@@ -71,3 +71,11 @@ export type DeviceState = {
     state: { value: DeviceCapabilityValue };
   }>;
 };
+
+export type SceneOption = {
+  name: String;
+  value: {
+    id: number;
+    paramId: number,
+  }
+};
