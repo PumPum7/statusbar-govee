@@ -1,7 +1,12 @@
 <script lang="ts">
-  import type { Device, DeviceCapabilityInstance, DeviceCapabilityValue, DeviceState, DeviceCapabilityType } from '../types';
-  import { colorPresets, numberToRGB, rgbToNumber } from '../types';
+  import type { Device, DeviceCapabilityInstance, DeviceCapabilityValue, DeviceState, DeviceCapabilityType, SceneOption } from '../types';
+  import { numberToRGB } from '../types';
+  import { invoke } from '@tauri-apps/api/core';
   import StatusIndicator from './StatusIndicator.svelte';
+  import PowerControl from './PowerControl.svelte';
+  import BrightnessControl from './BrightnessControl.svelte';
+  import ColorControl from './ColorControl.svelte';
+  import ScenesControl from './ScenesControl.svelte';
 
   export let device: Device;
   export let deviceState: DeviceState;
@@ -10,6 +15,28 @@
 
   let isPowerLoading = false;
   let error: string | null = null;
+  let lightScenes: SceneOption[] = [];
+  let diyScenes: SceneOption[] = [];
+  let isLoadingScenes = false;
+  let showLightScenes = false;
+  let showDiyScenes = false;
+
+  async function loadScenes() {
+    if (device.type !== 'light') return;
+    try {
+      isLoadingScenes = true;
+      const [lightSceneResult, diySceneResult] = await Promise.all([
+        invoke('get_light_scenes', { device: device.device, sku: device.sku }),
+        invoke('get_diy_scenes', { device: device.device, sku: device.sku })
+      ]);
+      lightScenes = lightSceneResult as SceneOption[];
+      diyScenes = diySceneResult as SceneOption[];
+    } catch (e) {
+      error = e as string;
+    } finally {
+      isLoadingScenes = false;
+    }
+  }
 
   async function handlePowerToggle() {
     if (isPowerLoading) return;
@@ -53,6 +80,12 @@
   $: currentColor = status?.color ? numberToRGB(status.color) : null;
 
   $: status = getDeviceStatus(deviceState);
+
+  $: {
+    if (deviceState && device.type === 'light') {
+      loadScenes();
+    }
+  }
 </script>
 
 <div class="device-card" data-type={device.type}>
@@ -77,110 +110,35 @@
           />
         {/if}
       {:else if device.type === 'light'}
-        <div class="power-row">
-          <StatusIndicator 
-            label="Power" 
-            value={""}
-            icon={status?.powerState ? '⚡' : '💤'}
-          />
-          <button 
-            class="power-button" 
-            class:on={status?.powerState}
-            class:off={!status?.powerState}
-            class:loading={isPowerLoading}
-            disabled={isPowerLoading}
-            on:click={handlePowerToggle}
-          >
-            {#if isPowerLoading}
-              ⟳
-            {:else}
-              {status?.powerState ? '⏻' : '⭘'}
-            {/if}
-          </button>
-        </div>
+        <PowerControl
+          {device}
+          powerState={status?.powerState || false}
+          {isPowerLoading}
+          {onTogglePower}
+        />
         {#if status?.powerState}
           {#if status?.brightness !== undefined}
-            <div class="status-indicator brightness-control">
-              <div class="brightness-row">
-                <span>Brightness</span>
-                <span class="brightness-value">{status.brightness}%</span>
-              </div>
-              <input 
-                type="range"
-                min="0"
-                max="100"
-                value={status.brightness}
-                class="brightness-slider"
-                style="--value: {status.brightness}%"
-                on:input={(e) => {
-                  const target = e.target as HTMLInputElement;
-                  target.style.setProperty('--value', `${target.value}%`);
-                  
-                  clearTimeout(target.dataset.timeout as any);
-                  target.dataset.timeout = setTimeout(() => {
-                    onChangeCapabilityValue(
-                      device.device, 
-                      device.sku, 
-                      'devices.capabilities.brightness', 
-                      parseInt(target.value || '0'), 
-                      'brightness'
-                    );
-                  }, 300) as any;
-                }}
-              />
-            </div>
+            <BrightnessControl
+              {device}
+              brightness={status.brightness}
+              {onChangeCapabilityValue}
+            />
           {/if}
 
           {#if deviceState.capabilities.some(c => c.instance === 'colorRgb')}
-            <div class="status-indicator color-control">
-              <div class="color-row">
-                <span>Color</span>
-                {#if currentColor}
-                  <span class="color-preview" style="background: rgb({currentColor.r}, {currentColor.g}, {currentColor.b})"></span>
-                {/if}
-              </div>
-              <div class="color-presets">
-                {#each Object.entries(colorPresets) as [name, color]}
-                  <button
-                    class="color-preset"
-                    aria-label={name}
-                    style="background: rgb({color.r}, {color.g}, {color.b})"
-                    title={name}
-                    on:click={() => {
-                      onChangeCapabilityValue(
-                        device.device,
-                        device.sku,
-                        'devices.capabilities.color_setting',
-                        rgbToNumber(color),
-                        'colorRgb'
-                      );
-                    }}
-                  ></button>
-                {/each}
-              </div>
-              <div class="color-inputs">
-                <input
-                  type="color"
-                  value={`#${currentColor?.r.toString(16).padStart(2, '0')}${currentColor?.g.toString(16).padStart(2, '0')}${currentColor?.b.toString(16).padStart(2, '0')}`}
-                  on:input={(e) => {
-                    const target = e.target as HTMLInputElement;
-                    const hex = target.value.substring(1);
-                    const color = {
-                      r: parseInt(hex.substring(0, 2), 16),
-                      g: parseInt(hex.substring(2, 4), 16),
-                      b: parseInt(hex.substring(4, 6), 16)
-                    };
-                    onChangeCapabilityValue(
-                      device.device,
-                      device.sku,
-                      'devices.capabilities.color_setting',
-                      rgbToNumber(color),
-                      'colorRgb'
-                    );
-                  }}
-                />
-              </div>
-            </div>
+            <ColorControl
+              {device}
+              currentColor={currentColor}
+              {onChangeCapabilityValue}
+            />
+            <ScenesControl
+              {device}
+              {lightScenes}
+              {diyScenes}
+              {showLightScenes}
+              {showDiyScenes}
+              {onChangeCapabilityValue}
+            />
           {/if}
         {/if}
       {:else}
@@ -232,52 +190,9 @@
     gap: 0.75rem;
   }
 
-  .power-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-
-  .power-button {
-    background: none;
-    border: none;
-    color: #ffffff;
-    font-size: 1.2rem;
-    cursor: pointer;
-    padding: 0.5rem;
-    border-radius: 50%;
-    width: 2.5rem;
-    height: 2.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.2s;
-  }
-
-  .power-button:hover {
-    background: rgba(255, 255, 255, 0.1);
-  }
-
-  .power-button.on {
-    color: #4ade80;
-  }
-
-  .power-button.off {
-    color: #ff0000;
-  }
-
-  .power-button.loading {
-    animation: spin 1s linear infinite;
-  }
-
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
-  }
-
-  .power-button:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
   }
 
   .loading {
@@ -293,124 +208,5 @@
 
   [data-type="light"] {
     background: linear-gradient(135deg, rgba(250, 204, 21, 0.2), rgba(234, 179, 8, 0.2));
-  }
-
-  .brightness-control {
-    background: rgba(255, 255, 255, 0.05);
-    padding: 12px;
-    border-radius: 8px;
-  }
-
-  .brightness-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-    font-size: 0.9rem;
-  }
-
-  .brightness-slider {
-    width: 100%;
-    height: 4px;
-    -webkit-appearance: none;
-    appearance: none;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 2px;
-    outline: none;
-  }
-
-  .brightness-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #fff;
-    cursor: pointer;
-    border: none;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    margin-top: -6px;
-  }
-
-  .color-control {
-    background: rgba(255, 255, 255, 0.05);
-    padding: 12px;
-    border-radius: 8px;
-    margin-top: 8px;
-  }
-
-  .color-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-    font-size: 0.9rem;
-  }
-
-  .color-preview {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    border: 2px solid rgba(255, 255, 255, 0.1);
-  }
-
-  .color-presets {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .color-preset {
-    width: 100%;
-    aspect-ratio: 1;
-    border-radius: 50%;
-    border: 2px solid rgba(255, 255, 255, 0.1);
-    cursor: pointer;
-    padding: 0;
-    transition: transform 0.2s;
-  }
-
-  .color-preset:hover {
-    transform: scale(1.1);
-  }
-
-  .color-inputs {
-    display: flex;
-    gap: 8px;
-  }
-
-  .color-inputs input[type="color"] {
-    width: 100%;
-    height: 40px;
-    border: none;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.1);
-    cursor: pointer;
-  }
-
-  .color-inputs input[type="color"]::-webkit-color-swatch-wrapper {
-    padding: 4px;
-  }
-
-  .color-inputs input[type="color"]::-webkit-color-swatch {
-    border: none;
-    border-radius: 4px;
-  }
-
-  .brightness-slider::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #fff;
-    cursor: pointer;
-    border: none;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    margin-top: -6px;
-  }
-
-  .brightness-slider::-webkit-slider-runnable-track {
-    background: linear-gradient(to right, #fff var(--value, 50%), rgba(255, 255, 255, 0.1) var(--value, 50%));
-    border-radius: 2px;
-    height: 4px;
   }
 </style>
