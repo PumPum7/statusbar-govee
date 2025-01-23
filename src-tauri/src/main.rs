@@ -25,6 +25,8 @@ fn main() {
             command::change_capability_value,
             command::get_api_key,
             command::set_api_key,
+            command::get_light_scenes,
+            command::get_diy_scenes
         ])
         .setup(|app| {
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
